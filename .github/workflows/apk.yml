@@ -1,1 +1,47 @@
-
+name: Crea APK Android
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Prepara
+        run: |
+          unzip -oq *.zip
+          cd /tmp
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          unzip -q Godot_v4.3-stable_linux.x86_64.zip
+          mv Godot_v4.3-stable_linux.x86_64 godot
+          unzip -q Godot_v4.3-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          mkdir -p ~/.config/godot
+          for f in editor_settings-4.tres editor_settings-4.3.tres; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/$f
+          done
+      - name: Esporta APK
+        working-directory: borgo
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/borgo/.ci/borgo.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: borgo
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: borgolanterna
+        run: |
+          timeout 300 /tmp/godot --headless --editor --quit || true
+          mkdir -p build
+          /tmp/godot --headless --export-release "Android" build/BorgoLanterna.apk
+          test -f build/BorgoLanterna.apk
+      - name: Pubblica
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk --yes --cleanup-tag || true
+          gh release create apk borgo/build/BorgoLanterna.apk --title "Borgo Lanterna APK" --notes "Scarica e installa sul telefono."
